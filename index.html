@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quiz, Tutorial &amp; Assessment Tracker</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--muted:#667085;--line:#e1e4ea;--accent:#2f6fed;--red:#fde4e4;--yellow:#fff4d1;--green:#dff3e3;--chip:#eef1f6;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1d222b;--text:#e8ebf0;--muted:#98a2b3;--line:#2d3440;--accent:#6c9bff;--red:#4a2326;--yellow:#4a3f1c;--green:#1f3d28;--chip:#2a313c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1d222b;--text:#e8ebf0;--muted:#98a2b3;--line:#2d3440;--accent:#6c9bff;--red:#4a2326;--yellow:#4a3f1c;--green:#1f3d28;--chip:#2a313c;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:1.35rem;margin:0 0 4px}
+.sub{color:var(--muted);font-size:.85rem;margin-bottom:14px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:96px}
+.stat b{display:block;font-size:1.25rem}.stat span{color:var(--muted);font-size:.78rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:3px}
+input,select,button{font:inherit;color:var(--text)}
+input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--chip);border-radius:8px;padding:8px 14px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.filters>*{width:auto;min-width:130px}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{width:100%;border-collapse:collapse;min-width:820px}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+tr.overdue td{background:var(--red)}tr.soon td{background:var(--yellow)}tr.complete td{background:var(--green)}
+.pill{padding:3px 10px;font-size:.82rem;border-radius:999px}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+.legend{color:var(--muted);font-size:.8rem;margin:8px 2px}
+#mode{font-size:.78rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Quiz, Tutorial &amp; Assessment Tracker</h1>
+<div class="sub">Your private list, open it from any device. <span id="mode"></span></div>
+<div class="stats" id="stats"></div>
+
+<section class="card">
+  <div class="grid">
+    <div><label for="type">Type</label><select id="type"><option>Quiz</option><option>Tutorial</option><option>Assessment</option></select></div>
+    <div style="grid-column:span 2"><label for="title">Title</label><input id="title" placeholder="e.g. Tutorial 4"></div>
+    <div><label for="subject">Subject / Unit</label><input id="subject" placeholder="e.g. ICT725"></div>
+    <div><label for="due">Last date</label><input id="due" type="date"></div>
+    <div><label for="status">Status</label><select id="status"><option>Pending</option><option>Done</option></select></div>
+    <div><label for="submitted">Submitted</label><select id="submitted"><option>No</option><option>Yes</option></select></div>
+  </div>
+  <div style="margin-top:10px"><label for="notes">Notes / details (marks, weight, Moodle link)</label><input id="notes"></div>
+  <div class="row"><button class="primary" id="save">Add</button><button id="cancel" hidden>Cancel edit</button></div>
+</section>
+
+<div class="filters">
+  <select id="fType"><option>All types</option><option>Quiz</option><option>Tutorial</option><option>Assessment</option></select>
+  <select id="fStatus"><option>All status</option><option>Pending</option><option>Done</option></select>
+  <select id="fSub"><option>All submission</option><option>Submitted</option><option>Not submitted</option></select>
+  <input id="q" placeholder="Search…">
+</div>
+<div class="wrap"><table>
+  <thead><tr><th>Type</th><th>Title</th><th>Subject</th><th>Notes</th><th>Last date</th><th>Days left</th><th>Status</th><th>Submitted</th><th></th></tr></thead>
+  <tbody id="body"></tbody>
+</table></div>
+<div class="legend">Red = overdue and not submitted · Yellow = due within 3 days · Green = done and submitted</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const LS = "tracker-tasks";
+let tasks = [], editId = null, col = null;
+
+const lsLoad = () => { try { return JSON.parse(localStorage.getItem(LS) || "[]"); } catch (e) { return []; } };
+const lsSave = () => { try { localStorage.setItem(LS, JSON.stringify(tasks)); } catch (e) {} };
+
+function parseDate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function daysLeft(s) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((parseDate(s) - t) / 86400000);
+}
+function daysText(n) { return n < 0 ? (-n) + " day(s) overdue" : n === 0 ? "Due today" : n + " day(s)"; }
+
+function render() {
+  const ft = $("fType").value, fs = $("fStatus").value, fb = $("fSub").value, q = $("q").value.trim().toLowerCase();
+  const list = tasks.slice().sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+  const body = $("body"); body.textContent = "";
+  let shown = 0;
+  for (const t of list) {
+    if (ft !== "All types" && t.type !== ft) continue;
+    if (fs !== "All status" && t.status !== fs) continue;
+    if (fb === "Submitted" && t.submitted !== "Yes") continue;
+    if (fb === "Not submitted" && t.submitted !== "No") continue;
+    if (q && !((t.title || "") + " " + (t.subject || "") + " " + (t.notes || "")).toLowerCase().includes(q)) continue;
+    shown++;
+    const n = daysLeft(t.due), done = t.status === "Done" && t.submitted === "Yes";
+    const tr = document.createElement("tr");
+    if (done) tr.className = "complete";
+    else if (t.submitted === "No" && n < 0) tr.className = "overdue";
+    else if (t.submitted === "No" && n <= 3) tr.className = "soon";
+    const cell = txt => { const td = document.createElement("td"); td.textContent = txt; tr.appendChild(td); return td; };
+    cell(t.type); cell(t.title); cell(t.subject || ""); cell(t.notes || ""); cell(t.due); cell(done ? "-" : daysText(n));
+    for (const [f, a, b] of [["status", "Pending", "Done"], ["submitted", "No", "Yes"]]) {
+      const td = cell(""), btn = document.createElement("button");
+      btn.className = "pill"; btn.textContent = t[f];
+      btn.onclick = () => change(t.id, { [f]: t[f] === b ? a : b });
+      td.appendChild(btn);
+    }
+    const act = cell("");
+    const e = document.createElement("button"); e.textContent = "Edit"; e.onclick = () => startEdit(t);
+    const d = document.createElement("button"); d.textContent = "Delete"; d.style.marginLeft = "6px"; d.onclick = () => remove(t);
+    act.append(e, d);
+    body.appendChild(tr);
+  }
+  if (!shown) { const tr = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 9; td.className = "empty"; td.textContent = tasks.length ? "Nothing matches the filters." : "No items yet. Add your first quiz, tutorial or assessment above."; tr.appendChild(td); body.appendChild(tr); }
+
+  const pending = tasks.filter(t => t.status === "Pending").length;
+  const notSub = tasks.filter(t => t.submitted === "No").length;
+  const overdue = tasks.filter(t => t.submitted === "No" && daysLeft(t.due) < 0).length;
+  $("stats").textContent = "";
+  for (const [k, v] of [["Total", tasks.length], ["Pending", pending], ["Not submitted", notSub], ["Overdue", overdue]]) {
+    const s = document.createElement("div"); s.className = "stat";
+    s.innerHTML = "<b></b><span></span>"; s.firstChild.textContent = v; s.lastChild.textContent = k; $("stats").appendChild(s);
+  }
+}
+
+function change(id, patch) {
+  if (col) { col.doc(id).update(patch).catch(() => alert("Could not save. Please try again.")); }
+  else { const t = tasks.find(x => x.id === id); if (t) Object.assign(t, patch); lsSave(); render(); }
+}
+function remove(t) {
+  if (!confirm("Delete “" + t.title + "”?")) return;
+  if (col) col.doc(t.id).delete().catch(() => alert("Could not delete."));
+  else { tasks = tasks.filter(x => x.id !== t.id); lsSave(); render(); }
+}
+function startEdit(t) {
+  editId = t.id;
+  for (const f of ["type", "title", "subject", "due", "status", "submitted", "notes"]) $(f).value = t[f] || "";
+  $("save").textContent = "Save changes"; $("cancel").hidden = false; scrollTo({ top: 0, behavior: "smooth" });
+}
+function resetForm() {
+  editId = null;
+  for (const f of ["title", "subject", "notes"]) $(f).value = "";
+  $("type").value = "Quiz"; $("status").value = "Pending"; $("submitted").value = "No";
+  $("due").valueAsDate = new Date(); $("save").textContent = "Add"; $("cancel").hidden = true;
+}
+$("cancel").onclick = resetForm;
+$("save").onclick = () => {
+  const title = $("title").value.trim();
+  if (!title) { alert("Please enter a title."); return; }
+  if (!$("due").value) { alert("Please pick a last date."); return; }
+  const data = { type: $("type").value, title, subject: $("subject").value.trim(), notes: $("notes").value.trim(), due: $("due").value, status: $("status").value, submitted: $("submitted").value };
+  const id = editId || "t" + Date.now();
+  if (col) col.doc(id).set(data).catch(() => alert("Could not save. Please try again."));
+  else { const i = tasks.findIndex(x => x.id === id); if (i >= 0) tasks[i] = { id, ...data }; else tasks.push({ id, ...data }); lsSave(); render(); }
+  resetForm();
+};
+for (const id of ["fType", "fStatus", "fSub"]) $(id).onchange = render;
+$("q").oninput = render;
+
+function useLocal(msg) { tasks = lsLoad(); $("mode").textContent = msg; render(); }
+
+async function init() {
+  resetForm(); render();
+  let db = null, uid = null;
+  try {
+    if (window.claude) {
+      db = await claude.use("db");
+      const u = await claude.use("user");
+      uid = u ? await u.id() : null;
+    }
+  } catch (e) {}
+  if (db && uid) {
+    col = db.collection("data/users/" + uid + "/tasks");
+    $("mode").textContent = "Synced to your account.";
+    col.onSnapshot(s => { tasks = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); },
+      () => { col = null; useLocal("Cloud unavailable. Saving in this browser only."); });
+  } else {
+    useLocal("Sign in to claude.ai to sync across devices. For now, saved in this browser only.");
+  }
+}
+init();
+</script>
+</body>
+</html>
